@@ -4,7 +4,11 @@ from smart_ids.pipeline import detect, generate_flows
 
 st.set_page_config(page_title='Smart IDS · Laboratoire', page_icon='🔎', layout='wide')
 st.title('Smart IDS — Laboratoire de flux')
-mode = st.sidebar.radio('Source de données', ['Démonstration synthétique', 'Import AWS manuel'])
+mode = st.sidebar.radio('Source de données', ['Démonstration synthétique', 'Import AWS manuel', 'Historique des analyses'])
+if mode == 'Historique des analyses':
+    from smart_ids.ui import render_history
+    render_history()
+    st.stop()
 if mode == 'Import AWS manuel':
     from smart_ids.aws_dashboard import render_aws
     render_aws()
@@ -32,12 +36,22 @@ else:
     st.dataframe(alerts, hide_index=True, width='stretch')
 st.download_button('Télécharger les alertes synthétiques', alerts.to_csv(index=False),
                    'synthetic_alerts.csv', 'text/csv')
+if st.button('Conserver cette démonstration dans l’historique'):
+    import sqlite3
+    from smart_ids.service import analyze_synthetic
+    from smart_ids.ui import get_store
+    try:
+        saved, reused = analyze_synthetic(get_store(), int(ports), int(megabytes) * 1_000_000)
+        st.success(f"Analyse {'retrouvée' if reused else 'enregistrée'} : {saved['id']}. Ouvrir l’historique Synthétique pour la qualifier.")
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        st.error(str(exc))
 with st.expander('Examiner les flux et les scénarios injectés'):
     st.caption('scenario est la vérité terrain de génération, pas une entrée des règles.')
     st.dataframe(flows, hide_index=True, width='stretch')
 
 st.divider()
 st.header('Isolation Forest · Évaluation synthétique')
+st.caption('Protocole balanced_v2 : les quatre familles normales sont présentes dans chaque période. Le test affiché est exploratoire, pas le jeu final réservé.')
 st.caption('Expérience indépendante de la démonstration ci-dessus. Les seuils manuels de la barre latérale ne modifient pas cette comparaison : règles fixes à 20 ports et 50 Mo.')
 
 from smart_ids.anomaly import run_experiment

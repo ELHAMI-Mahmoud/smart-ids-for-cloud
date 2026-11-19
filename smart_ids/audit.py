@@ -51,7 +51,7 @@ def reserve_final():
         return
     if path.exists():
         raise ValueError('Final existant sans manifeste : ne pas écraser.')
-    final = generate_dataset(seed=20261104)
+    final = generate_dataset(seed=20261104, balanced=False)
     final = final.loc[final.split.eq('test')].copy()
     final['timestamp'] += pd.Timedelta(days=2)
     final['split'] = 'final_reserved'
@@ -69,7 +69,7 @@ def reserve_final():
 def audit():
     preserve_baseline()
     reserve_final()
-    flows = generate_dataset()
+    flows = generate_dataset(balanced=False)
     flows = flows.loc[flows.split.isin(['train', 'validation'])].copy()
     windows = evaluation_windows(flows)
     features = BASE_FEATURES + ['bytes_in']

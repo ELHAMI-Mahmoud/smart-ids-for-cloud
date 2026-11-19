@@ -9,3 +9,10 @@ reports/*.json
 .aws/
 data/aws/
 reports/aws_manual/
+*.sqlite3
+*.sqlite3-*
+var/
+.streamlit/secrets.toml
+*.pem
+*.key
+exports/

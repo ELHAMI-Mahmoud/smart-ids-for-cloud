@@ -1,5 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AwsDashboardTests(unittest.TestCase):
+    def setUp(self):
+        (ROOT / 'var').mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=ROOT / 'var')
+        self.addCleanup(self.temp.cleanup)
+        env = patch.dict(os.environ, {'SMART_IDS_DB': str(Path(self.temp.name) / 'ui.sqlite3')})
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_source_switch_keeps_experiments_separate(self):
         app = AppTest.from_file(str(ROOT / 'app.py')).run(timeout=30)
         app.radio[0].set_value('Import AWS manuel').run(timeout=30)

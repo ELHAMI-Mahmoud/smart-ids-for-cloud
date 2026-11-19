@@ -7,13 +7,14 @@ from sklearn.ensemble import IsolationForest
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
 from smart_ids.pipeline import ROOT, detect
+from smart_ids.features import aggregate
 
 SEED = 42
 BASE_FEATURES = ['flow_count', 'ports_out', 'destinations_out',
                  'max_ports_per_destination', 'bytes_out']
 
 
-def generate_dataset(seed=SEED):
+def generate_dataset(seed=SEED, balanced=True):
     """Chaque instance occupe une seule fenêtre ; aucune instance n'est recopiée."""
     rows = []
     for split_index, (split, day, count) in enumerate([
@@ -22,8 +23,9 @@ def generate_dataset(seed=SEED):
         rng = np.random.default_rng(seed + split_index)
         for i in range(count):
             suspicious = split != 'train' and i % 4 == 0
+            normal_index = i if split == 'train' or not balanced else i - (i + 3) // 4
             kind = (['scan', 'fanout', 'exfiltration', 'subtle'][i // 4 % 4]
-                    if suspicious else ['web', 'backup', 'interactive', 'download'][i % 4])
+                    if suspicious else ['web', 'backup', 'interactive', 'download'][normal_index % 4])
             # Variantes propres à chaque période, paramètres et tirages indépendants.
             variant = f'{split}:{kind}'
             window = pd.Timestamp(day, tz='UTC') + pd.Timedelta(minutes=5 * i)
@@ -59,34 +61,6 @@ def generate_dataset(seed=SEED):
                                  protocol='TCP', synthetic=True, split=split,
                                  scenario=variant, instance_id=f'{split}:{i}',
                                  label=int(suspicious)))
-    return pd.DataFrame(rows)
-
-
-def aggregate(flows):
-    """Variables sans métadonnées : aucun label, scénario, split ou IP au modèle.
-
-    direction est relative au périmètre interne. Absence de lignes entrantes ne
-    prouve pas un volume entrant nul : bytes_in est alors omis du schéma.
-    """
-    df = flows.copy()
-    if not df.direction.isin(['inbound', 'outbound']).all():
-        raise ValueError('Direction inconnue : inbound/outbound requis.')
-    if df['bytes'].isna().any() or (df['bytes'] < 0).any():
-        raise ValueError('Volume manquant ou négatif.')
-    df['window'] = pd.to_datetime(df.timestamp, utc=True).dt.floor('5min')
-    df['host'] = np.where(df.direction.eq('outbound'), df.src_ip, df.dst_ip)
-    inbound_available = df.direction.eq('inbound').any()
-    rows = []
-    for (window, host), g in df.groupby(['window', 'host'], sort=True):
-        out = g[g.direction.eq('outbound')]
-        ports = out.groupby('dst_ip').dst_port.nunique()
-        row = dict(window=window, host=host, flow_count=len(g),
-                   ports_out=out.dst_port.nunique(), destinations_out=out.dst_ip.nunique(),
-                   max_ports_per_destination=int(ports.max()) if len(ports) else 0,
-                   bytes_out=int(out['bytes'].sum()))
-        if inbound_available:
-            row['bytes_in'] = int(g.loc[g.direction.eq('inbound'), 'bytes'].sum())
-        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -182,6 +156,7 @@ def main():
     result['windows'].to_csv(ROOT / 'reports/synthetic_ml_windows.csv', index=False)
     result['metrics'].to_csv(ROOT / 'reports/synthetic_ml_metrics.csv', index=False)
     metadata = dict(seed=SEED, threshold=result['threshold'], features=result['features'],
+                    generator_protocol='balanced_v2; test exploratoire distinct du final réservé',
                     model_parameters=result['model'].get_params(),
                     split_windows=result['windows'].groupby('split').size().to_dict(),
                     score='-IsolationForest.score_samples; non probabiliste',

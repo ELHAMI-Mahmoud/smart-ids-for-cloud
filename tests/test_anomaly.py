@@ -72,3 +72,11 @@ class AnomalyTests(unittest.TestCase):
         w = self.result['windows']
         self.assertTrue((w.combined_alert == (w.rule_alert | w.model_alert)).all())
         self.assertTrue((self.result['metrics'].windows == 160).all())
+
+    def test_normal_families_are_covered_in_every_split(self):
+        windows = evaluation_windows(self.flows)
+        for split in ['train', 'validation', 'test']:
+            normal = windows.loc[windows.split.eq(split) & windows.label.eq(0)]
+            counts = normal.scenario.str.split(':').str[-1].value_counts()
+            self.assertEqual(set(counts.index), {'web', 'backup', 'interactive', 'download'})
+            self.assertEqual(counts.nunique(), 1)
